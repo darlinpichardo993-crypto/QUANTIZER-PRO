@@ -1,0 +1,61 @@
+name: Build Quantizer Pro
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-windows:
+    runs-on: windows-2022
+    timeout-minutes: 45
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure x64 Release
+        run: cmake -S . -B build -A x64 -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build VST3
+        run: cmake --build build --config Release --parallel 2
+
+      - name: Verify VST3 output
+        shell: pwsh
+        run: |
+          $plugin = "build/QuantizerPro_artefacts/Release/VST3/Quantizer Pro.vst3"
+          if (!(Test-Path $plugin)) { throw "VST3 output not found: $plugin" }
+          if (!(Get-ChildItem $plugin -Recurse -Filter "*.vst3" -ErrorAction SilentlyContinue)) {
+            $binary = Get-ChildItem $plugin -Recurse -File | Where-Object { $_.Name -eq "Quantizer Pro.vst3" }
+            if (!$binary) { throw "VST3 bundle appears to be empty." }
+          }
+
+      - name: Install Inno Setup
+        run: choco install innosetup --no-progress -y
+
+      - name: Build installer
+        shell: pwsh
+        run: |
+          $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
+          if (!(Test-Path $iscc)) { throw "Inno Setup compiler not found." }
+          & $iscc "installer/QuantizerPro.iss"
+          if ($LASTEXITCODE -ne 0) { throw "Inno Setup failed with exit code $LASTEXITCODE" }
+          if (!(Test-Path "dist/QuantizerPro_Setup.exe")) { throw "Setup.exe was not generated." }
+
+      - name: Upload VST3
+        uses: actions/upload-artifact@v4
+        with:
+          name: QuantizerPro_VST3
+          path: build/QuantizerPro_artefacts/Release/VST3/Quantizer Pro.vst3
+          if-no-files-found: error
+
+      - name: Upload Setup.exe
+        uses: actions/upload-artifact@v4
+        with:
+          name: QuantizerPro_Setup
+          path: dist/QuantizerPro_Setup.exe
+          if-no-files-found: error
