@@ -268,7 +268,7 @@ private:
     void doQuantize();
     void doAnalyze();
     void showMenu();
-    bool startDragExport (juce::Component* source);
+    bool startDragExport();
 
     QuantizerProcessor& proc;
     ui::LAF laf;
