@@ -268,11 +268,13 @@ private:
     void doQuantize();
     void doAnalyze();
     void showMenu();
+    bool startDragExport (juce::Component* source);
 
     QuantizerProcessor& proc;
     ui::LAF laf;
     std::unique_ptr<Content> content;
     std::unique_ptr<juce::FileChooser> chooser;
+    juce::Array<juce::File> dragExportFiles;
     int lastStamp = 0;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (QuantizerEditor)

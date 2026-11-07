@@ -4,6 +4,30 @@ using namespace juce;
 using ui::T; using ui::U; using ui::white;
 using APVTS = AudioProcessorValueTreeState;
 
+// Botón de exportación: clic = exportación manual; arrastrar = enviar WAV al DAW.
+struct ExportDragButton : ui::PillButton
+{
+    using ui::PillButton::PillButton;
+    std::function<void()> onDragExport;
+    bool dragStarted = false;
+
+    void mouseDown (const MouseEvent& e) override
+    {
+        dragStarted = false;
+        ui::PillButton::mouseDown (e);
+    }
+
+    void mouseDrag (const MouseEvent& e) override
+    {
+        ui::PillButton::mouseDrag (e);
+        if (! dragStarted && (std::abs (e.getDistanceFromDragStartX()) + std::abs (e.getDistanceFromDragStartY()) > 8))
+        {
+            dragStarted = true;
+            if (onDragExport) onDragExport();
+        }
+    }
+};
+
 static constexpr float DW = 1672.f, DH = 1100.f;
 
 // ===================================================================== Strip (rejilla + onda)
@@ -235,7 +259,8 @@ struct QuantizerEditor::Content : Component
 
     ui::ComboUser presetBox, momentBox, gridBox;
     std::unique_ptr<APVTS::ComboBoxAttachment> aPreset, aMoment, aGrid;
-    ui::PillButton folderBtn { "", ui::PillButton::Icon, 3 }, saveBtn { "", ui::PillButton::Icon, 4 }, dotsBtn { "", ui::PillButton::Icon, 5 };
+    ui::PillButton folderBtn { "", ui::PillButton::Icon, 3 }, dotsBtn { "", ui::PillButton::Icon, 5 };
+    ExportDragButton saveBtn { "", ui::PillButton::Icon, 4 };
     ui::PillButton analyzeBtn { "ANALIZAR", ui::PillButton::White, 1 }, recBtn { "CAPTURAR EN VIVO", ui::PillButton::Dark, 6 };
     ui::PillButton quantizeBtn { "CUANTIZAR", ui::PillButton::White, 2 }, hostBtn { "HOST", ui::PillButton::Dark, 0 };
     ToggleButton monoBtn { "MONO" }, bypassBtn { "BYPASS" };
@@ -316,6 +341,8 @@ struct QuantizerEditor::Content : Component
             ed.chooser->launchAsync (FileBrowserComponent::saveMode | FileBrowserComponent::canSelectFiles | FileBrowserComponent::warnAboutOverwriting,
                                      [this] (const FileChooser& fc) { auto f = fc.getResult(); if (f != File()) proc.exportQuantizedWav (f.withFileExtension ("wav")); });
         };
+        saveBtn.setTooltip ("Arrastra este icono a la Playlist de tu DAW para enviar el WAV cuantizado. Clic para exportar manualmente.");
+        saveBtn.onDragExport = [this] { ed.startDragExport (&saveBtn); };
         setSize ((int) DW, (int) DH);
     }
 
@@ -430,6 +457,8 @@ QuantizerEditor::~QuantizerEditor()
     stopTimer();
     proc.removeChangeListener (this);
     content = nullptr;
+    for (auto& f : dragExportFiles) f.deleteFile();
+    dragExportFiles.clear();
     setLookAndFeel (nullptr);
 }
 
@@ -484,6 +513,32 @@ void QuantizerEditor::doAnalyze()
 {
     if (proc.capturing.load()) proc.stopCaptureAndAnalyze();
     else proc.analyze();
+}
+
+bool QuantizerEditor::startDragExport (Component* source)
+{
+    const auto clip = proc.getClip();
+    if (clip == nullptr || clip->original == nullptr || clip->quantized == nullptr || proc.busy.load())
+        return false;
+
+    auto dir = File::getSpecialLocation (File::tempDirectory)
+                   .getChildFile ("QuantizerPro")
+                   .getChildFile ("DragExports");
+    if (! dir.exists() && dir.createDirectory().failed())
+        return false;
+
+    const auto name = "QuantizerPro_Quantized_" + String (Time::getMillisecondCounter()) + ".wav";
+    auto file = dir.getChildFile (name);
+    if (! proc.exportQuantizedWav (file))
+    {
+        file.deleteFile();
+        return false;
+    }
+
+    dragExportFiles.add (file); // conservarlo mientras el DAW termina de leerlo
+    StringArray files;
+    files.add (file.getFullPathName());
+    return DragAndDropContainer::performExternalDragDropOfFiles (files, false, source);
 }
 
 void QuantizerEditor::showMenu()
