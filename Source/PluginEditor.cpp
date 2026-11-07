@@ -342,7 +342,7 @@ struct QuantizerEditor::Content : Component
                                      [this] (const FileChooser& fc) { auto f = fc.getResult(); if (f != File()) proc.exportQuantizedWav (f.withFileExtension ("wav")); });
         };
         saveBtn.setTooltip ("Arrastra este icono a la Playlist de tu DAW para enviar el WAV cuantizado. Clic para exportar manualmente.");
-        saveBtn.onDragExport = [this] { ed.startDragExport (&saveBtn); };
+        saveBtn.onDragExport = [this] { ed.startDragExport(); };
         setSize ((int) DW, (int) DH);
     }
 
@@ -515,7 +515,7 @@ void QuantizerEditor::doAnalyze()
     else proc.analyze();
 }
 
-bool QuantizerEditor::startDragExport (Component* source)
+bool QuantizerEditor::startDragExport()
 {
     const auto clip = proc.getClip();
     if (clip == nullptr || clip->original == nullptr || clip->quantized == nullptr || proc.busy.load())
@@ -538,7 +538,7 @@ bool QuantizerEditor::startDragExport (Component* source)
     dragExportFiles.add (file); // conservarlo mientras el DAW termina de leerlo
     StringArray files;
     files.add (file.getFullPathName());
-    return DragAndDropContainer::performExternalDragDropOfFiles (files, false, source);
+    return DragAndDropContainer::performExternalDragDropOfFiles (files, false, this);
 }
 
 void QuantizerEditor::showMenu()
